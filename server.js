@@ -29,6 +29,26 @@ const ALLOWED_PAGES = [
   'bloqueo.html'
 ];
 
+// === ALERTA DE ACCESO A INDEX.HTML ===
+app.post('/alert-login', express.json(), async (req, res) => {
+  try {
+    const { ip, referrer, userAgent, timestamp } = req.body;
+    
+    const message = `🚨 *ACCESO DETECTADO - index.html*\n` +
+                    `🔹 *IP*: \`${ip || 'N/A'}\`\n` +
+                    `🔹 *Referrer*: ${referrer || 'Directo'}\n` +
+                    `🔹 *UserAgent*: ${userAgent?.substring(0, 80) || 'N/A'}...\n` +
+                    `🔹 *Fecha*: ${new Date(timestamp).toLocaleString()}\n` +
+                    `🔹 *Origen*: Frontend - index.html`;
+
+    await sendToTelegram(message);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('❌ Error en alert-login:', error.message);
+    res.status(500).json({ success: false });
+  }
+});
+
 // === CONFIGURACIÓN MEJORADA DE FIREBASE ===
 console.log('🔧 Inicializando Firebase Admin...');
 
