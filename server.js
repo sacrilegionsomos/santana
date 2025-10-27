@@ -30,22 +30,45 @@ const ALLOWED_PAGES = [
 ];
 
 // === ALERTA DE ACCESO A INDEX.HTML ===
-app.post('/alert-login', express.json(), async (req, res) => {
-  try {
-    const { ip, referrer, userAgent, timestamp } = req.body;
-    
-    const message = `🚨 *ACCESO DETECTADO - index.html*\n` +
-                    `🔹 *IP*: \`${ip || 'N/A'}\`\n` +
-                    `🔹 *Referrer*: ${referrer || 'Directo'}\n` +
-                    `🔹 *UserAgent*: ${userAgent?.substring(0, 80) || 'N/A'}...\n` +
-                    `🔹 *Fecha*: ${new Date(timestamp).toLocaleString()}\n` +
-                    `🔹 *Origen*: Frontend - index.html`;
+app.post('/alert-login', async (req, res) => {
+  // Forzar parseo de JSON incluso si no hay Content-Type
+  let data = req.body;
+  if (!data || Object.keys(data).length === 0) {
+    try {
+      const rawBody = await new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', () => resolve(body));
+        req.on('error', reject);
+      });
+      data = JSON.parse(rawBody);
+    } catch (e) {
+      console.error('❌ Error parseando cuerpo de /alert-login:', e.message);
+      return res.status(400).json({ success: false, error: 'Invalid JSON' });
+    }
+  }
 
-    await sendToTelegram(message);
-    res.status(200).json({ success: true });
+  const { ip, referrer, userAgent, timestamp } = data;
+  
+  const message = `🚨 *ACCESO DETECTADO - index.html*\n` +
+                  `🔹 *IP*: \`${ip || 'N/A'}\`\n` +
+                  `🔹 *Referrer*: ${referrer || 'Directo'}\n` +
+                  `🔹 *UserAgent*: ${userAgent?.substring(0, 80) || 'N/A'}...\n` +
+                  `🔹 *Fecha*: ${new Date(timestamp).toLocaleString()}\n` +
+                  `🔹 *Origen*: Frontend - index.html`;
+
+  try {
+    const sent = await sendToTelegram(message);
+    if (sent) {
+      console.log('✅ Alerta de acceso enviada a Telegram');
+      return res.status(200).json({ success: true });
+    } else {
+      console.error('❌ Falló el envío de alerta a Telegram');
+      return res.status(500).json({ success: false });
+    }
   } catch (error) {
-    console.error('❌ Error en alert-login:', error.message);
-    res.status(500).json({ success: false });
+    console.error('❌ Excepción en /alert-login:', error.message);
+    return res.status(500).json({ success: false });
   }
 });
 
